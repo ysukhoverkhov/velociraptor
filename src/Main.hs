@@ -14,8 +14,8 @@ main = do
     let request
             = setRequestHost "api.github.com"
             $ setRequestMethod "GET"
-            $ setRequestPath "/"
-            $ setRequestHeaders [("Authorization", S8.pack("token " ++ token)), ("User-Agent", "Awesome-Octocat-App")]
+            $ setRequestPath "/users/ysukhoverkhov/repos"
+            $ setRequestHeaders [("Authorization", S8.pack("token " ++ token)), ("User-Agent", "Velociraptor")]
             $ setRequestSecure True
             $ setRequestPort 443
             $ defaultRequest
