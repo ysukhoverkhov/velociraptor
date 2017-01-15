@@ -6,6 +6,7 @@ import qualified Data.ByteString.Char8      as S8
 import           GHC.Generics
 import           Data.Aeson
 import           Network.HTTP.Simple
+import           Data.Either.Utils
 
 data Repo = Repo {
       id :: Int,
@@ -25,34 +26,51 @@ instance ToJSON GHError where
     toEncoding = genericToEncoding defaultOptions
 
 
+data Auth = Auth {
+    token :: String
+} deriving (Show)
+
+data RepoSource = Own | User String | Organization String deriving (Show)
+
+repos :: Auth -> RepoSource -> IO (Either String [Repo])
+repos auth source =
+    httpLBS request >>= (\response -> return (bodyFromResponse response >>= parseResponse))
+    where request = reposRequest source $ authenticatedRequest auth githubRequest
+
+-- TODO: make it parse responses of any kind
+parseResponse :: LS8.ByteString -> Either String [Repo]
+parseResponse response = maybeToEither "Unable to decode response body" (decode response :: Maybe [Repo]) -- TODO: introduce error here
+
+
+-- TODO: check status code here and return Left if not 200. (getResponseStatusCode response)
+bodyFromResponse :: Response LS8.ByteString -> Either String LS8.ByteString
+bodyFromResponse response = Right $ getResponseBody response
+
+-- Should we move these strings to sort of constants?
+reposRequest Own =
+    let endpoint = "/user/repos"
+    in  setRequestPath endpoint
+reposRequest (User name) =
+    let endpoint a = "/users/" ++ a ++ "/repos"
+    in  setRequestPath (S8.pack (endpoint name))
+reposRequest (Organization name) =
+    let endpoint a = "/orgs/" ++ a ++ "/repos"
+    in  setRequestPath (S8.pack (endpoint name))
+
+authenticatedRequest auth =
+    addRequestHeader "Authorization" (S8.pack ("token " ++ token auth))
+
+githubRequest =
+    setRequestHost "api.github.com"
+    $ setRequestMethod "GET"
+    $ setRequestHeaders [("User-Agent", "Velociraptor")]
+    $ setRequestSecure True
+    $ setRequestPort 443 defaultRequest
+
+
 main :: IO ()
-main = do
-
-    -- https://haskell-lang.org/library/http-client
-    let token = "github token here"
-
-    let request
-            = setRequestHost "api.github.com"
-            $ setRequestMethod "GET"
-            $ setRequestPath "/users/ysukhoverkhov/repos"
-            $ setRequestHeaders [("Authorization", S8.pack("token " ++ token)), ("User-Agent", "Velociraptor")]
-            $ setRequestSecure True
-            $ setRequestPort 443
-            $ defaultRequest
-    response <- httpLBS request
-
-    putStrLn $ "The status code was: " ++
-               show (getResponseStatusCode response)
-    putStrLn $ "Content-Type" ++
-               show (getResponseHeader "Content-Type" response)
-
-    let body = getResponseBody response
-    LS8.putStrLn body
-
-    let repos = decode body :: Maybe [Repo]
-    print repos
-
-    let error = decode body :: Maybe GHError
-    print error
+main =
+    let token = "insert token here"
+    in  repos Auth { token = token } Own >>= print
 
     -- https://wiki.haskell.org/High-level_option_handling_with_GetOpt
