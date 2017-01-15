@@ -42,10 +42,10 @@ reposRequest Own =
     in  HTTP.setRequestPath endpoint
 reposRequest (User name) =
     let endpoint a = "/users/" ++ a ++ "/repos"
-    in  name $ HTTP.setRequestPath . S8.pack . endpoint
+    in  HTTP.setRequestPath . S8.pack . endpoint $ name
 reposRequest (Organization name) =
     let endpoint a = "/orgs/" ++ a ++ "/repos"
-    in  name $ HTTP.setRequestPath . S8.pack . endpoint
+    in  HTTP.setRequestPath . S8.pack . endpoint $ name
 
 authenticatedRequest auth =
     HTTP.addRequestHeader "Authorization" (S8.pack ("token " ++ token auth))

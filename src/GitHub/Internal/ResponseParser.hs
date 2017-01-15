@@ -1,14 +1,14 @@
 module GitHub.Internal.ResponseParser (parseResponse) where
 
-import           Data.Either.Utils          (maybeToEither)
 import qualified Data.ByteString.Lazy.Char8 as LS8
 import qualified Data.Aeson                 as Aeson
 import qualified GitHub.Types               as Types
 
+-- TODO: write README.
 
--- TODO: make it parse responses of any kind
-parseResponse :: LS8.ByteString -> Either String [Types.Repo]
-parseResponse response = maybeToEither "Unable to decode response body" (Aeson.decode response :: Maybe [Types.Repo]) -- TODO: introduce error here
+-- TODO: make it parse only our types
+parseResponse :: (Aeson.FromJSON a) => LS8.ByteString -> Either String a
+parseResponse = Aeson.eitherDecode
 
 
 -- Implementation
