@@ -1,19 +1,33 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module GitHub.Api (
-    Auth (..),
-    RepoSource (..),
+    Repo, GitHubError,
+    Auth (..), RepoSource (..), Error (..),
     repos) where
 
+import           GHC.Generics (Generic)
+import           Control.Arrow (left)
+import           Control.Monad -- TODO: how to import >=> only?
+import qualified Data.ByteString.Lazy.Char8 as LS8
+import qualified Data.ByteString.Char8      as S8
+import qualified Network.HTTP.Simple        as HTTP
+import qualified Data.Aeson                 as Aeson
 
-import qualified Data.ByteString.Lazy.Char8     as LS8
-import qualified Data.ByteString.Char8          as S8
-import qualified Network.HTTP.Simple            as HTTP
-import qualified GitHub.Types                   as Types
-import qualified GitHub.Internal.ResponseParser as Parser
+
+-- GitHub domain types
+
+data Repo = Repo {
+    id :: Int,
+    name :: String
+} deriving (Generic, Show)
+
+data GitHubError = GitHubError {
+    message :: String
+} deriving (Generic, Show)
 
 
--- Argument types
+-- API types
 
 data Auth = Auth {
     token :: String
@@ -21,19 +35,24 @@ data Auth = Auth {
 
 data RepoSource = Own | User String | Organization String deriving (Show)
 
+data Error =
+    InvalidPayload {payload :: String, errorDescription :: String} |
+    GitHubApiError {statusCode :: Int, error :: GitHubError}
+    deriving (Show)
 
--- Public Api
 
-repos :: Auth -> RepoSource -> IO (Either String [Types.Repo])
+-- Api
+
+repos :: Auth -> RepoSource -> IO (Either Error [Repo])
 repos auth source =
-    HTTP.httpLBS request >>= (\response -> return (bodyFromResponse response >>= Parser.parseResponse))
+    HTTP.httpLBS request >>= return . parseResponse
+--     HTTP.httpLBS request >>= print >> return (Left $ InvalidPayload "NOOO!")
     where request = reposRequest source $ authenticatedRequest auth githubRequest
 
 
--- Implementation
+-- Payloads fetching
 
--- TODO: check status code here and return Left if not 200. (getResponseStatusCode response)
-bodyFromResponse :: HTTP.Response LS8.ByteString -> Either String LS8.ByteString
+bodyFromResponse :: HTTP.Response LS8.ByteString -> Either Error LS8.ByteString
 bodyFromResponse response = Right $ HTTP.getResponseBody response
 
 -- TODO: Should we move these strings to sort of constants?
@@ -56,3 +75,31 @@ githubRequest =
     $ HTTP.setRequestHeaders [("User-Agent", "Velociraptor")]
     $ HTTP.setRequestSecure True
     $ HTTP.setRequestPort 443 HTTP.defaultRequest
+
+
+-- Response parsing
+
+parseResponse :: (Aeson.FromJSON a) => HTTP.Response LS8.ByteString -> Either Error a
+parseResponse response =
+    let statusCode = HTTP.getResponseStatusCode response
+        responseBody = bodyFromResponse response
+        parser 200  = parsePayload
+        parser code = (parsePayload :: LS8.ByteString -> Either Error GitHubError) >=>
+                   (\err -> Left GitHubApiError {statusCode = code, GitHub.Api.error = err})
+    in  responseBody >>= parser statusCode
+
+
+parsePayload :: (Aeson.FromJSON a) => LS8.ByteString -> Either Error a
+parsePayload json =
+    left wrapAesonError (Aeson.eitherDecode json)
+    where wrapAesonError aesonError = InvalidPayload {payload = LS8.unpack json, errorDescription = aesonError}
+
+
+instance Aeson.FromJSON Repo
+instance Aeson.ToJSON Repo where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
+
+instance Aeson.FromJSON GitHubError
+instance Aeson.ToJSON GitHubError where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
+
