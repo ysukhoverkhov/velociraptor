@@ -2,13 +2,13 @@
 {-# LANGUAGE DeriveGeneric #-}
 
 module GitHub.Api (
-    Repo, GitHubError,
+    Repo, ErrorDescription,
     Auth (..), RepoSource (..), Error (..),
     repos) where
 
 import           GHC.Generics (Generic)
 import           Control.Arrow (left)
-import           Control.Monad -- TODO: how to import >=> only?
+import           Control.Monad ((>=>))
 import qualified Data.ByteString.Lazy.Char8 as LS8
 import qualified Data.ByteString.Char8      as S8
 import qualified Network.HTTP.Simple        as HTTP
@@ -22,7 +22,7 @@ data Repo = Repo {
     name :: String
 } deriving (Generic, Show)
 
-data GitHubError = GitHubError {
+data ErrorDescription = ErrorDescription {
     message :: String
 } deriving (Generic, Show)
 
@@ -36,8 +36,8 @@ data Auth = Auth {
 data RepoSource = Own | User String | Organization String deriving (Show)
 
 data Error =
-    InvalidPayload {payload :: String, errorDescription :: String} |
-    GitHubApiError {statusCode :: Int, error :: GitHubError}
+    InvalidPayload {payload :: String, parserError :: String} |
+    GitHubApiError {statusCode :: Int, errorDescription :: ErrorDescription}
     deriving (Show)
 
 
@@ -53,7 +53,7 @@ repos auth source =
 -- Payloads fetching
 
 bodyFromResponse :: HTTP.Response LS8.ByteString -> Either Error LS8.ByteString
-bodyFromResponse response = Right $ HTTP.getResponseBody response
+bodyFromResponse response = pure $ HTTP.getResponseBody response
 
 -- TODO: Should we move these strings to sort of constants?
 reposRequest Own =
@@ -70,11 +70,11 @@ authenticatedRequest auth =
     HTTP.addRequestHeader "Authorization" (S8.pack ("token " ++ token auth))
 
 githubRequest =
-    HTTP.setRequestHost "api.github.com"
-    $ HTTP.setRequestMethod "GET"
-    $ HTTP.setRequestHeaders [("User-Agent", "Velociraptor")]
-    $ HTTP.setRequestSecure True
-    $ HTTP.setRequestPort 443 HTTP.defaultRequest
+    HTTP.setRequestHost "api.github.com" .
+    HTTP.setRequestMethod "GET" .
+    HTTP.setRequestHeaders [("User-Agent", "Velociraptor")] .
+    HTTP.setRequestSecure True .
+    HTTP.setRequestPort 443 $ HTTP.defaultRequest
 
 
 -- Response parsing
@@ -84,22 +84,22 @@ parseResponse response =
     let statusCode = HTTP.getResponseStatusCode response
         responseBody = bodyFromResponse response
         parser 200  = parsePayload
-        parser code = (parsePayload :: LS8.ByteString -> Either Error GitHubError) >=>
-                   (\err -> Left GitHubApiError {statusCode = code, GitHub.Api.error = err})
+        parser code = (parsePayload :: LS8.ByteString -> Either Error ErrorDescription) >=>
+                   (\err -> Left GitHubApiError {statusCode = code, errorDescription = err})
     in  responseBody >>= parser statusCode
 
 
 parsePayload :: (Aeson.FromJSON a) => LS8.ByteString -> Either Error a
 parsePayload json =
     left wrapAesonError (Aeson.eitherDecode json)
-    where wrapAesonError aesonError = InvalidPayload {payload = LS8.unpack json, errorDescription = aesonError}
+    where wrapAesonError aesonError = InvalidPayload {payload = LS8.unpack json, parserError = aesonError}
 
 
 instance Aeson.FromJSON Repo
 instance Aeson.ToJSON Repo where
     toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
 
-instance Aeson.FromJSON GitHubError
-instance Aeson.ToJSON GitHubError where
+instance Aeson.FromJSON ErrorDescription
+instance Aeson.ToJSON ErrorDescription where
     toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
 
