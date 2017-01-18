@@ -1,12 +1,8 @@
-module Main where
+import GitHub.Api
 
-import Control.Monad
+main :: IO ()
+main =
+    let token = "insert token here."
+    in  repos Auth { token = token } Own >>= print
 
-main = doStuff
-
-doStuff = do
-    putStrLn "Input a line"
-    line <- getLine
-    putStrLn . rev $ line
-    unless(null line) doStuff
-    where rev = unwords . reverse . words
+    -- https://wiki.haskell.org/High-level_option_handling_with_GetOpt
