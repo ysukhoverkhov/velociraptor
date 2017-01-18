@@ -14,12 +14,19 @@ import qualified Data.ByteString.Char8      as S8
 import qualified Network.HTTP.Simple        as HTTP
 import qualified Data.Aeson                 as Aeson
 
+-- TODO: use Text
 
 -- GitHub domain types
 
 data Repo = Repo {
     id :: Int,
-    name :: String
+    owner :: Owner,
+    name :: String,
+    full_name :: String
+} deriving (Generic, Show)
+
+data Owner = Owner {
+    login :: String
 } deriving (Generic, Show)
 
 data ErrorDescription = ErrorDescription {
@@ -45,8 +52,8 @@ data Error =
 
 repos :: Auth -> RepoSource -> IO (Either Error [Repo])
 repos auth source =
-    HTTP.httpLBS request >>= return . parseResponse
---     HTTP.httpLBS request >>= print >> return (Left $ InvalidPayload "NOOO!")
+     HTTP.httpLBS request >>= return . parseResponse
+--     HTTP.httpLBS request >>= print >> return (Right [])
     where request = reposRequest source $ authenticatedRequest auth githubRequest
 
 
@@ -97,6 +104,10 @@ parsePayload json =
 
 instance Aeson.FromJSON Repo
 instance Aeson.ToJSON Repo where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
+
+instance Aeson.FromJSON Owner
+instance Aeson.ToJSON Owner where
     toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
 
 instance Aeson.FromJSON ErrorDescription
