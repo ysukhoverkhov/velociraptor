@@ -85,9 +85,6 @@ performRequest request = HTTP.httpLBS request >>= return . parseResponse
 
 -- Payloads fetching
 
-bodyFromResponse :: HTTP.Response LS8.ByteString -> Either Error LS8.ByteString
-bodyFromResponse response = pure $ HTTP.getResponseBody response -- TODO: think about jumping into functor here.
-
 reposRequest source =
     HTTP.setRequestPath endpoint
     where endpoint = case source of
@@ -125,11 +122,11 @@ formatTime t =
 parseResponse :: (Aeson.FromJSON a) => HTTP.Response LS8.ByteString -> Either Error a
 parseResponse response =
     let statusCode = HTTP.getResponseStatusCode response
-        responseBody = bodyFromResponse response
+        responseBody = HTTP.getResponseBody response
         parser 200  = parsePayload
         parser code = (parsePayload :: LS8.ByteString -> Either Error ErrorDescription) >=>
                    (\err -> Left GitHubApiError {statusCode = code, errorDescription = err})
-    in  responseBody >>= parser statusCode
+    in  parser statusCode responseBody
 
 
 parsePayload :: (Aeson.FromJSON a) => LS8.ByteString -> Either Error a
