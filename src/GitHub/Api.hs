@@ -15,11 +15,13 @@ import qualified Data.ByteString.Char8      as S8
 import qualified Network.HTTP.Simple        as HTTP
 import qualified Data.Aeson                 as Aeson
 import qualified Data.Time.Clock            as Clock
+import qualified Data.Time.Format           as TimeFormat
 
 -- TODO: use Text
 
 -- GitHub domain types
 
+-- TODO: Maybe prefix.
 data ErrorDescription = ErrorDescription {
     message :: String
 } deriving (Generic, Show)
@@ -94,14 +96,16 @@ reposRequest source =
             Organization name -> "/orgs/" <> S8.pack name <> "/repos"
 
 
--- TODO: take time frame into account.
+commitsRequest :: CommitsCriteria -> HTTP.Request -> HTTP.Request
 commitsRequest criteria =
-    (HTTP.setRequestPath . S8.pack $ "/repos/" ++ repoFullName criteria ++ "/commits") .
-    HTTP.setRequestQueryString [("since", Just $ S8.pack "2011-04-14T16:00:49Z")]
+    HTTP.setRequestPath ("/repos/" <> S8.pack (repoFullName criteria) <> "/commits") .
+    HTTP.setRequestQueryString [("since", formatTime <$> since criteria), ("until", formatTime <$> GitHub.Api.until criteria)]
 
+authenticatedRequest :: Auth -> HTTP.Request -> HTTP.Request
 authenticatedRequest auth =
-    HTTP.addRequestHeader "Authorization" (S8.pack ("token " ++ token auth))
+    HTTP.addRequestHeader "Authorization" ("token " <> S8.pack (token auth))
 
+githubRequest :: HTTP.Request
 githubRequest =
     HTTP.setRequestHost "api.github.com" .
     HTTP.setRequestMethod "GET" .
@@ -109,9 +113,15 @@ githubRequest =
     HTTP.setRequestSecure True .
     HTTP.setRequestPort 443 $ HTTP.defaultRequest
 
+formatTime :: Clock.UTCTime -> S8.ByteString
+formatTime t =
+    let format = "%Y-%m-%dT%H:%M:%SZ"
+    in S8.pack $ TimeFormat.formatTime TimeFormat.defaultTimeLocale format t
+
 
 -- Response parsing
 
+-- TODO: chat about this.
 parseResponse :: (Aeson.FromJSON a) => HTTP.Response LS8.ByteString -> Either Error a
 parseResponse response =
     let statusCode = HTTP.getResponseStatusCode response
