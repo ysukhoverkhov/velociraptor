@@ -22,7 +22,6 @@ import qualified Data.Time.Format           as TimeFormat
 
 -- GitHub domain types
 
--- TODO: Maybe prefix.
 data ErrorDescription = ErrorDescription {
     message :: String
 } deriving (Generic, Show)
@@ -42,7 +41,8 @@ data Commit = Commit {
     sha :: String,
     commit :: CommitPayload,
     author :: Person,
-    committer :: Person
+    committer :: Person,
+    files :: Maybe [File]
 } deriving (Generic, Show)
 
 data CommitPayload = CommitPayload {
@@ -55,6 +55,13 @@ data CommitPerson = CommitPerson {
     email :: String,
     date :: String
 } deriving (Generic, Show)
+
+data File = File {
+    filename :: String,
+    additions :: Int,
+    deletions :: Int
+} deriving (Generic, Show)
+
 
 -- API types
 
@@ -184,4 +191,8 @@ instance Aeson.ToJSON CommitPayload where
 
 instance Aeson.FromJSON CommitPerson
 instance Aeson.ToJSON CommitPerson where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
+
+instance Aeson.FromJSON File
+instance Aeson.ToJSON File where
     toEncoding = Aeson.genericToEncoding Aeson.defaultOptions

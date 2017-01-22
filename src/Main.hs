@@ -6,6 +6,7 @@ import Data.Time
 import Data.Time.Format
 
 -- https://wiki.haskell.org/High-level_option_handling_with_GetOpt
+-- NOTE: please do not review this file, mess here is by intention.
 
 main :: IO ()
 main = do
