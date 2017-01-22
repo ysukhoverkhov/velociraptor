@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 
 import GitHub.Api
@@ -45,3 +46,7 @@ printCommitDetails auth repo commit = do
     case ec of
         Right c -> print c
         Left error -> print error
+
+-- Subject to move to a module bellow.
+
+-- linesAdded ::

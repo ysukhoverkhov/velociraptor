@@ -11,6 +11,10 @@ import           GHC.Generics (Generic)
 import           Control.Arrow (left)
 import           Control.Monad ((>=>))
 import           Data.Monoid ((<>))
+import qualified Data.Text                  as T
+import qualified Data.Text.Lazy             as LT
+import qualified Data.Text.Encoding         as E
+import qualified Data.Text.Lazy.Encoding    as LE
 import qualified Data.ByteString.Lazy.Char8 as LS8
 import qualified Data.ByteString.Char8      as S8
 import qualified Network.HTTP.Simple        as HTTP
@@ -18,27 +22,26 @@ import qualified Data.Aeson                 as Aeson
 import qualified Data.Time.Clock            as Clock
 import qualified Data.Time.Format           as TimeFormat
 
--- TODO: use Text
 
 -- GitHub domain types
 
 data ErrorDescription = ErrorDescription {
-    message :: String
+    message :: T.Text
 } deriving (Generic, Show)
 
 data Repo = Repo {
     id :: Int,
     owner :: Person,
-    name :: String,
-    full_name :: String
+    name :: T.Text,
+    full_name :: T.Text
 } deriving (Generic, Show)
 
 data Person = Person {
-    login :: String
+    login :: T.Text
 } deriving (Generic, Show)
 
 data Commit = Commit {
-    sha :: String,
+    sha :: T.Text,
     commit :: CommitPayload,
     author :: Person,
     committer :: Person,
@@ -51,13 +54,13 @@ data CommitPayload = CommitPayload {
 } deriving (Generic, Show)
 
 data CommitPerson = CommitPerson {
-    name :: String,
-    email :: String,
-    date :: String
+    name :: T.Text,
+    email :: T.Text,
+    date :: T.Text
 } deriving (Generic, Show)
 
 data File = File {
-    filename :: String,
+    filename :: T.Text,
     additions :: Int,
     deletions :: Int
 } deriving (Generic, Show)
@@ -66,25 +69,25 @@ data File = File {
 -- API types
 
 data Auth = Auth {
-    token :: String
+    token :: T.Text
 } deriving (Show)
 
 data Error =
-    InvalidPayload {payload :: String, parserError :: String} |
+    InvalidPayload {payload :: T.Text, parserError :: T.Text} |
     GitHubApiError {statusCode :: Int, errorDescription :: ErrorDescription}
     deriving (Show)
 
-data RepoSource = Own | User String | Organization String deriving (Show)
+data RepoSource = Own | User T.Text | Organization T.Text deriving (Show)
 
 data CommitsCriteria = CommitsCriteria {
-    repoFullName :: String,
+    repoFullName :: T.Text,
     since :: Maybe Clock.UTCTime,
     until :: Maybe Clock.UTCTime
 } deriving (Show)
 
 data CommitCriteria = CommitCriteria {
-    repoFullName :: String,
-    commitSha :: String
+    repoFullName :: T.Text,
+    commitSha :: T.Text
 } deriving (Show)
 
 
@@ -111,30 +114,30 @@ performRequest request = HTTP.httpLBS request >>= return . parseResponse
 
 reposRequest source =
     HTTP.setRequestPath endpoint
-    where endpoint = case source of
+    where endpoint = E.encodeUtf8 $ case source of
             Own               -> "/user/repos"
-            User name         -> "/users/" <> S8.pack name <> "/repos"
-            Organization name -> "/orgs/" <> S8.pack name <> "/repos"
+            User name         -> "/users/" <> name <> "/repos"
+            Organization name -> "/orgs/" <> name <> "/repos"
 
 commitsRequest :: CommitsCriteria -> HTTP.Request -> HTTP.Request
 commitsRequest criteria =
-    HTTP.setRequestPath ("/repos/" <> S8.pack (repoFullName (criteria :: CommitsCriteria)) <> "/commits") .
+    HTTP.setRequestPath (E.encodeUtf8 ("/repos/" <> repoFullName (criteria :: CommitsCriteria) <> "/commits")) .
     HTTP.setRequestQueryString [
         ("since", formatTime <$> since criteria),
         ("until", formatTime <$> GitHub.Api.until criteria)]
 
 commitRequest :: CommitCriteria -> HTTP.Request -> HTTP.Request
 commitRequest criteria =
-    HTTP.setRequestPath $
+    HTTP.setRequestPath . E.encodeUtf8 $
         "/repos/" <>
-        S8.pack (repoFullName (criteria :: CommitCriteria)) <>
+        repoFullName (criteria :: CommitCriteria) <>
         "/commits/" <>
-        S8.pack (commitSha (criteria :: CommitCriteria))
+        commitSha (criteria :: CommitCriteria)
 
 
 authenticatedRequest :: Auth -> HTTP.Request -> HTTP.Request
 authenticatedRequest auth =
-    HTTP.addRequestHeader "Authorization" ("token " <> S8.pack (token auth))
+    HTTP.addRequestHeader "Authorization" $ E.encodeUtf8 ("token " <> token auth)
 
 githubRequest :: HTTP.Request
 githubRequest =
@@ -166,7 +169,9 @@ parseResponse response =
 parsePayload :: (Aeson.FromJSON a) => LS8.ByteString -> Either Error a
 parsePayload json =
     left wrapAesonError (Aeson.eitherDecode json)
-    where wrapAesonError aesonError = InvalidPayload {payload = LS8.unpack json, parserError = aesonError}
+    where wrapAesonError aesonError = InvalidPayload {
+        payload = LT.toStrict $ LE.decodeUtf8 json,
+        parserError = T.pack aesonError}
 
 
 instance Aeson.FromJSON ErrorDescription
