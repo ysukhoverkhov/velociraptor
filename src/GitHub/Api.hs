@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 module GitHub.Api (
     Repo (..), ErrorDescription (..),
@@ -39,15 +40,21 @@ data Person = Person {
 
 data Commit = Commit {
     sha :: String,
-    author :: Person
+    commit :: CommitPayload,
+    author :: Person,
+    committer :: Person
 } deriving (Generic, Show)
 
--- TODO: switch to GHC 8.0
--- data CommitPerson = CommitPerson {
---     name :: String,
---     email :: String,
---     date :: String
--- } deriving (Generic, Show)
+data CommitPayload = CommitPayload {
+    author :: CommitPerson,
+    committer :: CommitPerson
+} deriving (Generic, Show)
+
+data CommitPerson = CommitPerson {
+    name :: String,
+    email :: String,
+    date :: String
+} deriving (Generic, Show)
 
 -- API types
 
@@ -151,3 +158,10 @@ instance Aeson.FromJSON Commit
 instance Aeson.ToJSON Commit where
     toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
 
+instance Aeson.FromJSON CommitPayload
+instance Aeson.ToJSON CommitPayload where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
+
+instance Aeson.FromJSON CommitPerson
+instance Aeson.ToJSON CommitPerson where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
