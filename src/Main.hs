@@ -13,25 +13,24 @@ main = do
     print myRepos
 
     case myRepos of
-        Right xs -> do
-            let s = parseTimeM False defaultTimeLocale "%-d-%-m-%Y" "16-1-2017"
-            let u = parseTimeM False defaultTimeLocale "%-d-%-m-%Y" "16-1-2019"
-
-            case s of
-                Just t -> print $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" t
-                _ -> print "not parsed"
-
-            c <- commits auth CommitsCriteria { repoFullName = full_name . head $ xs, since = s, GitHub.Api.until = u }
-            case c of
-                Right cs -> do
-                    mapM_ print cs
-                    print "done"
-                Left error -> print error
+        Right xs -> printRepoCommits auth (head xs)
         Left error -> print error
 
 
-printRepoCommits :: Repo -> IO ()
-printRepoCommits repo = do
-    return ()
+printRepoCommits :: Auth -> Repo -> IO ()
+printRepoCommits auth repo = do
+    let s = parseTimeM False defaultTimeLocale "%-d-%-m-%Y" "16-1-2017"
+    let u = parseTimeM False defaultTimeLocale "%-d-%-m-%Y" "16-1-2019"
+
+    case s of
+        Just t -> print $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" t
+        _ -> print "not parsed"
+
+    c <- commits auth CommitsCriteria { repoFullName = full_name repo, since = s, GitHub.Api.until = u }
+    case c of
+        Right cs -> do
+            mapM_ print cs
+            print "done"
+        Left error -> print error
 
     -- https://wiki.haskell.org/High-level_option_handling_with_GetOpt
