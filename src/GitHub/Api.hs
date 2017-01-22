@@ -3,9 +3,9 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 
 module GitHub.Api (
-    Repo (..), ErrorDescription (..),
-    Auth (..), RepoSource (..), Error (..), CommitsCriteria (..),
-    repos, commits) where
+    Repo (..), ErrorDescription (..), Commit (..),
+    Auth (..), RepoSource (..), Error (..), CommitsCriteria (..), CommitCriteria (..),
+    fetchRepos, fetchCommits, fetchCommit) where
 
 import           GHC.Generics (Generic)
 import           Control.Arrow (left)
@@ -75,16 +75,26 @@ data CommitsCriteria = CommitsCriteria {
     until :: Maybe Clock.UTCTime
 } deriving (Show)
 
+data CommitCriteria = CommitCriteria {
+    repoFullName :: String,
+    commitSha :: String
+} deriving (Show)
+
 
 -- Api
 
-repos :: Auth -> RepoSource -> IO (Either Error [Repo])
-repos auth source =
+fetchRepos :: Auth -> RepoSource -> IO (Either Error [Repo])
+fetchRepos auth source =
     performRequest $ reposRequest source $ authenticatedRequest auth githubRequest
 
-commits :: Auth -> CommitsCriteria -> IO (Either Error [Commit])
-commits auth criteria =
+fetchCommits :: Auth -> CommitsCriteria -> IO (Either Error [Commit])
+fetchCommits auth criteria =
     performRequest $ commitsRequest criteria $ authenticatedRequest auth githubRequest
+
+fetchCommit :: Auth -> CommitCriteria -> IO (Either Error Commit)
+fetchCommit auth criteria =
+    performRequest $ commitRequest criteria $ authenticatedRequest auth githubRequest
+
 
 performRequest :: (Aeson.FromJSON a) => HTTP.Request -> IO (Either Error a)
 performRequest request = HTTP.httpLBS request >>= return . parseResponse
@@ -99,11 +109,21 @@ reposRequest source =
             User name         -> "/users/" <> S8.pack name <> "/repos"
             Organization name -> "/orgs/" <> S8.pack name <> "/repos"
 
-
 commitsRequest :: CommitsCriteria -> HTTP.Request -> HTTP.Request
 commitsRequest criteria =
-    HTTP.setRequestPath ("/repos/" <> S8.pack (repoFullName criteria) <> "/commits") .
-    HTTP.setRequestQueryString [("since", formatTime <$> since criteria), ("until", formatTime <$> GitHub.Api.until criteria)]
+    HTTP.setRequestPath ("/repos/" <> S8.pack (repoFullName (criteria :: CommitsCriteria)) <> "/commits") .
+    HTTP.setRequestQueryString [
+        ("since", formatTime <$> since criteria),
+        ("until", formatTime <$> GitHub.Api.until criteria)]
+
+commitRequest :: CommitCriteria -> HTTP.Request -> HTTP.Request
+commitRequest criteria =
+    HTTP.setRequestPath $
+        "/repos/" <>
+        S8.pack (repoFullName (criteria :: CommitCriteria)) <>
+        "/commits/" <>
+        S8.pack (commitSha (criteria :: CommitCriteria))
+
 
 authenticatedRequest :: Auth -> HTTP.Request -> HTTP.Request
 authenticatedRequest auth =

@@ -1,19 +1,22 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+
 import GitHub.Api
 
 import Data.Time
 import Data.Time.Format
 
+-- https://wiki.haskell.org/High-level_option_handling_with_GetOpt
 
 main :: IO ()
 main = do
     let token = "token here"
     let auth = Auth { token = token }
 
-    myRepos <- repos auth Own
+    myRepos <- fetchRepos auth Own
     print myRepos
 
     case myRepos of
-        Right xs -> printRepoCommits auth (head xs)
+        Right xs -> printRepoCommits auth $ head xs
         Left error -> print error
 
 
@@ -26,11 +29,18 @@ printRepoCommits auth repo = do
         Just t -> print $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" t
         _ -> print "not parsed"
 
-    c <- commits auth CommitsCriteria { repoFullName = full_name repo, since = s, GitHub.Api.until = u }
-    case c of
+    ecs <- fetchCommits auth CommitsCriteria { repoFullName = full_name repo, since = s, GitHub.Api.until = u }
+    case ecs of
         Right cs -> do
             mapM_ print cs
-            print "done"
+            printCommitDetails auth repo $ head cs
         Left error -> print error
 
-    -- https://wiki.haskell.org/High-level_option_handling_with_GetOpt
+
+printCommitDetails :: Auth -> Repo -> Commit -> IO ()
+printCommitDetails auth repo commit = do
+    print "Fetching single commit..."
+    ec <- fetchCommit auth CommitCriteria { repoFullName = full_name repo, commitSha = sha commit}
+    case ec of
+        Right c -> print c
+        Left error -> print error
