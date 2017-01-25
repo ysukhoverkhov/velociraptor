@@ -5,8 +5,11 @@ import GitHub.Api
 
 import Data.Time
 import Data.Time.Format
+import qualified Data.Text                  as T
+
 
 -- https://wiki.haskell.org/High-level_option_handling_with_GetOpt
+
 -- NOTE: please do not review this file, mess here is by intention.
 
 main :: IO ()
@@ -44,9 +47,21 @@ printCommitDetails auth repo commit = do
     print "Fetching single commit..."
     ec <- fetchCommit auth CommitCriteria { repoFullName = full_name repo, commitSha = sha commit}
     case ec of
-        Right c -> print c
+        Right c -> do
+            print c
+            print $ linesAdded (SourceExtensions [".coffee"]) c
+
         Left error -> print error
 
--- Subject to move to a module bellow.
 
--- linesAdded ::
+-- TODO: move me to a module.
+
+data SourceExtensions = SourceExtensions [T.Text]
+
+linesAdded :: SourceExtensions -> Commit -> Int
+linesAdded _ Commit {files = Nothing} = 0
+linesAdded (SourceExtensions extensions) Commit {files = Just files} =
+    let linesAddedToFile f = additions f - deletions f
+        shouldUseFile f = any (hasExtension $ filename f) extensions
+        hasExtension filename ext = T.isSuffixOf ext filename
+    in  sum . map linesAddedToFile . filter shouldUseFile $ files

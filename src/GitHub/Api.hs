@@ -3,7 +3,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 
 module GitHub.Api (
-    Repo (..), ErrorDescription (..), Commit (..),
+    Repo (..), ErrorDescription (..), Commit (..), File(..),
     Auth (..), RepoSource (..), Error (..), CommitsCriteria (..), CommitCriteria (..),
     fetchRepos, fetchCommits, fetchCommit) where
 
