@@ -1,74 +1,146 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 module GitHub.Api (
-    Repo, ErrorDescription,
-    Auth (..), RepoSource (..), Error (..),
-    repos) where
+    Repo (..), ErrorDescription (..), Commit (..),
+    Auth (..), RepoSource (..), Error (..), CommitsCriteria (..), CommitCriteria (..),
+    fetchRepos, fetchCommits, fetchCommit) where
 
 import           GHC.Generics (Generic)
 import           Control.Arrow (left)
 import           Control.Monad ((>=>))
+import           Data.Monoid ((<>))
+import qualified Data.Text                  as T
+import qualified Data.Text.Lazy             as LT
+import qualified Data.Text.Encoding         as E
+import qualified Data.Text.Lazy.Encoding    as LE
 import qualified Data.ByteString.Lazy.Char8 as LS8
 import qualified Data.ByteString.Char8      as S8
 import qualified Network.HTTP.Simple        as HTTP
 import qualified Data.Aeson                 as Aeson
+import qualified Data.Time.Clock            as Clock
+import qualified Data.Time.Format           as TimeFormat
 
 
 -- GitHub domain types
 
-data Repo = Repo {
-    id :: Int,
-    name :: String
+data ErrorDescription = ErrorDescription {
+    message :: T.Text
 } deriving (Generic, Show)
 
-data ErrorDescription = ErrorDescription {
-    message :: String
+data Repo = Repo {
+    id :: Int,
+    owner :: Person,
+    name :: T.Text,
+    full_name :: T.Text
+} deriving (Generic, Show)
+
+data Person = Person {
+    login :: T.Text
+} deriving (Generic, Show)
+
+data Commit = Commit {
+    sha :: T.Text,
+    commit :: CommitPayload,
+    author :: Person,
+    committer :: Person,
+    files :: Maybe [File]
+} deriving (Generic, Show)
+
+data CommitPayload = CommitPayload {
+    author :: CommitPerson,
+    committer :: CommitPerson
+} deriving (Generic, Show)
+
+data CommitPerson = CommitPerson {
+    name :: T.Text,
+    email :: T.Text,
+    date :: T.Text
+} deriving (Generic, Show)
+
+data File = File {
+    filename :: T.Text,
+    additions :: Int,
+    deletions :: Int
 } deriving (Generic, Show)
 
 
 -- API types
 
 data Auth = Auth {
-    token :: String
+    token :: T.Text
 } deriving (Show)
 
-data RepoSource = Own | User String | Organization String deriving (Show)
-
 data Error =
-    InvalidPayload {payload :: String, parserError :: String} |
+    InvalidPayload {payload :: T.Text, parserError :: T.Text} |
     GitHubApiError {statusCode :: Int, errorDescription :: ErrorDescription}
     deriving (Show)
+
+data RepoSource = Own | User T.Text | Organization T.Text deriving (Show)
+
+data CommitsCriteria = CommitsCriteria {
+    repoFullName :: T.Text,
+    since :: Maybe Clock.UTCTime,
+    until :: Maybe Clock.UTCTime
+} deriving (Show)
+
+data CommitCriteria = CommitCriteria {
+    repoFullName :: T.Text,
+    commitSha :: T.Text
+} deriving (Show)
 
 
 -- Api
 
-repos :: Auth -> RepoSource -> IO (Either Error [Repo])
-repos auth source =
-    HTTP.httpLBS request >>= return . parseResponse
---     HTTP.httpLBS request >>= print >> return (Left $ InvalidPayload "NOOO!")
-    where request = reposRequest source $ authenticatedRequest auth githubRequest
+fetchRepos :: Auth -> RepoSource -> IO (Either Error [Repo])
+fetchRepos auth source =
+    performRequest $ reposRequest source $ authenticatedRequest auth githubRequest
+
+fetchCommits :: Auth -> CommitsCriteria -> IO (Either Error [Commit])
+fetchCommits auth criteria =
+    performRequest $ commitsRequest criteria $ authenticatedRequest auth githubRequest
+
+fetchCommit :: Auth -> CommitCriteria -> IO (Either Error Commit)
+fetchCommit auth criteria =
+    performRequest $ commitRequest criteria $ authenticatedRequest auth githubRequest
+
+
+performRequest :: (Aeson.FromJSON a) => HTTP.Request -> IO (Either Error a)
+performRequest request = HTTP.httpLBS request >>= return . parseResponse
 
 
 -- Payloads fetching
 
-bodyFromResponse :: HTTP.Response LS8.ByteString -> Either Error LS8.ByteString
-bodyFromResponse response = pure $ HTTP.getResponseBody response
+reposRequest :: RepoSource -> HTTP.Request -> HTTP.Request
+reposRequest source =
+    HTTP.setRequestPath endpoint
+    where endpoint = E.encodeUtf8 $ case source of
+            Own               -> "/user/repos"
+            User name         -> "/users/" <> name <> "/repos"
+            Organization name -> "/orgs/" <> name <> "/repos"
 
--- TODO: Should we move these strings to sort of constants?
-reposRequest Own =
-    let endpoint = "/user/repos"
-    in  HTTP.setRequestPath endpoint
-reposRequest (User name) =
-    let endpoint a = "/users/" ++ a ++ "/repos"
-    in  HTTP.setRequestPath . S8.pack . endpoint $ name
-reposRequest (Organization name) =
-    let endpoint a = "/orgs/" ++ a ++ "/repos"
-    in  HTTP.setRequestPath . S8.pack . endpoint $ name
+commitsRequest :: CommitsCriteria -> HTTP.Request -> HTTP.Request
+commitsRequest criteria =
+    HTTP.setRequestPath (E.encodeUtf8 ("/repos/" <> repoFullName (criteria :: CommitsCriteria) <> "/commits")) .
+    HTTP.setRequestQueryString [
+        ("since", formatTime <$> since criteria),
+        ("until", formatTime <$> GitHub.Api.until criteria)]
 
+commitRequest :: CommitCriteria -> HTTP.Request -> HTTP.Request
+commitRequest criteria =
+    HTTP.setRequestPath . E.encodeUtf8 $
+        "/repos/" <>
+        repoFullName (criteria :: CommitCriteria) <>
+        "/commits/" <>
+        commitSha (criteria :: CommitCriteria)
+
+
+authenticatedRequest :: Auth -> HTTP.Request -> HTTP.Request
 authenticatedRequest auth =
-    HTTP.addRequestHeader "Authorization" (S8.pack ("token " ++ token auth))
+    HTTP.addRequestHeader "Authorization" $ E.encodeUtf8 ("token " <> token auth)
 
+githubRequest :: HTTP.Request
 githubRequest =
     HTTP.setRequestHost "api.github.com" .
     HTTP.setRequestMethod "GET" .
@@ -76,30 +148,57 @@ githubRequest =
     HTTP.setRequestSecure True .
     HTTP.setRequestPort 443 $ HTTP.defaultRequest
 
+formatTime :: Clock.UTCTime -> S8.ByteString
+formatTime t =
+    let format = "%Y-%m-%dT%H:%M:%SZ"
+    in S8.pack $ TimeFormat.formatTime TimeFormat.defaultTimeLocale format t
+
 
 -- Response parsing
 
+-- TODO: chat about this.
 parseResponse :: (Aeson.FromJSON a) => HTTP.Response LS8.ByteString -> Either Error a
 parseResponse response =
     let statusCode = HTTP.getResponseStatusCode response
-        responseBody = bodyFromResponse response
+        responseBody = HTTP.getResponseBody response
         parser 200  = parsePayload
         parser code = (parsePayload :: LS8.ByteString -> Either Error ErrorDescription) >=>
                    (\err -> Left GitHubApiError {statusCode = code, errorDescription = err})
-    in  responseBody >>= parser statusCode
+    in  parser statusCode responseBody
 
 
 parsePayload :: (Aeson.FromJSON a) => LS8.ByteString -> Either Error a
 parsePayload json =
     left wrapAesonError (Aeson.eitherDecode json)
-    where wrapAesonError aesonError = InvalidPayload {payload = LS8.unpack json, parserError = aesonError}
+    where wrapAesonError aesonError = InvalidPayload {
+        payload = LT.toStrict $ LE.decodeUtf8 json,
+        parserError = T.pack aesonError}
 
-
-instance Aeson.FromJSON Repo
-instance Aeson.ToJSON Repo where
-    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
 
 instance Aeson.FromJSON ErrorDescription
 instance Aeson.ToJSON ErrorDescription where
     toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
 
+instance Aeson.FromJSON Repo
+instance Aeson.ToJSON Repo where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
+
+instance Aeson.FromJSON Person
+instance Aeson.ToJSON Person where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
+
+instance Aeson.FromJSON Commit
+instance Aeson.ToJSON Commit where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
+
+instance Aeson.FromJSON CommitPayload
+instance Aeson.ToJSON CommitPayload where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
+
+instance Aeson.FromJSON CommitPerson
+instance Aeson.ToJSON CommitPerson where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
+
+instance Aeson.FromJSON File
+instance Aeson.ToJSON File where
+    toEncoding = Aeson.genericToEncoding Aeson.defaultOptions
