@@ -112,6 +112,7 @@ performRequest request = HTTP.httpLBS request >>= return . parseResponse
 
 -- Payloads fetching
 
+reposRequest :: RepoSource -> HTTP.Request -> HTTP.Request
 reposRequest source =
     HTTP.setRequestPath endpoint
     where endpoint = E.encodeUtf8 $ case source of
