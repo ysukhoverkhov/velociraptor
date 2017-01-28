@@ -4,9 +4,10 @@
 import GitHub.Api
 
 import Data.Time
+import Data.Time.Clock as Clock
 import Data.Time.Format
 import qualified Data.Text                  as T
-
+import Data.List
 
 -- https://wiki.haskell.org/High-level_option_handling_with_GetOpt
 
@@ -38,6 +39,7 @@ printRepoCommits auth repo = do
     case ecs of
         Right cs -> do
             mapM_ print cs
+            print $ firstCommitDate cs
             printCommitDetails auth repo $ head cs
         Left error -> print error
 
@@ -61,7 +63,17 @@ data SourceExtensions = SourceExtensions [T.Text]
 linesAdded :: SourceExtensions -> Commit -> Int
 linesAdded _ Commit {files = Nothing} = 0
 linesAdded (SourceExtensions extensions) Commit {files = Just files} =
-    let linesAddedToFile f = additions f - deletions f
+    sum . map linesAddedToFile . filter shouldUseFile $ files
+    where
+        linesAddedToFile f = additions f - deletions f
         shouldUseFile f = any (hasExtension $ filename f) extensions
         hasExtension filename ext = T.isSuffixOf ext filename
-    in  sum . map linesAddedToFile . filter shouldUseFile $ files
+
+-- TODO: rewrite with fold
+firstCommitDate :: [Commit] -> Clock.UTCTime
+firstCommitDate commits =
+    date au
+    where
+        payl = commit c :: CommitPayload
+        au = author payl :: Int
+        c = head $ sortOn (\a -> 1) commits

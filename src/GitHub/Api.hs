@@ -3,7 +3,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 
 module GitHub.Api (
-    Repo (..), ErrorDescription (..), Commit (..), File(..),
+    Repo (..), ErrorDescription (..), Commit (..), File(..), CommitPerson(..), CommitPayload(..),
     Auth (..), RepoSource (..), Error (..), CommitsCriteria (..), CommitCriteria (..),
     fetchRepos, fetchCommits, fetchCommit) where
 
@@ -56,7 +56,7 @@ data CommitPayload = CommitPayload {
 data CommitPerson = CommitPerson {
     name :: T.Text,
     email :: T.Text,
-    date :: T.Text
+    date :: Clock.UTCTime
 } deriving (Generic, Show)
 
 data File = File {
@@ -95,16 +95,21 @@ data CommitCriteria = CommitCriteria {
 
 fetchRepos :: Auth -> RepoSource -> IO (Either Error [Repo])
 fetchRepos auth source =
-    performRequest $ reposRequest source $ authenticatedRequest auth githubRequest
+    fetchResource auth $ reposRequest source
 
 fetchCommits :: Auth -> CommitsCriteria -> IO (Either Error [Commit])
 fetchCommits auth criteria =
-    performRequest $ commitsRequest criteria $ authenticatedRequest auth githubRequest
+    fetchResource auth $ commitsRequest criteria
 
 fetchCommit :: Auth -> CommitCriteria -> IO (Either Error Commit)
 fetchCommit auth criteria =
-    performRequest $ commitRequest criteria $ authenticatedRequest auth githubRequest
+    fetchResource auth $ commitRequest criteria
 
+
+
+fetchResource :: (Aeson.FromJSON a) => Auth -> (HTTP.Request -> HTTP.Request) -> IO (Either Error a)
+fetchResource auth request =
+    performRequest $ request $ authenticatedRequest auth githubRequest
 
 performRequest :: (Aeson.FromJSON a) => HTTP.Request -> IO (Either Error a)
 performRequest request = HTTP.httpLBS request >>= return . parseResponse
@@ -122,10 +127,13 @@ reposRequest source =
 
 commitsRequest :: CommitsCriteria -> HTTP.Request -> HTTP.Request
 commitsRequest criteria =
-    HTTP.setRequestPath (E.encodeUtf8 ("/repos/" <> repoFullName (criteria :: CommitsCriteria) <> "/commits")) .
-    HTTP.setRequestQueryString [
-        ("since", formatTime <$> since criteria),
-        ("until", formatTime <$> GitHub.Api.until criteria)]
+    HTTP.setRequestPath requestPath . HTTP.setRequestQueryString requestQueryString
+    where
+        requestPath = E.encodeUtf8 ("/repos/" <> repoFullName (criteria :: CommitsCriteria) <> "/commits")
+        requestQueryString = [
+                ("since", formatTime <$> since criteria),
+                ("until", formatTime <$> GitHub.Api.until criteria)
+            ]
 
 commitRequest :: CommitCriteria -> HTTP.Request -> HTTP.Request
 commitRequest criteria =
@@ -150,13 +158,13 @@ githubRequest =
 
 formatTime :: Clock.UTCTime -> S8.ByteString
 formatTime t =
-    let format = "%Y-%m-%dT%H:%M:%SZ"
-    in S8.pack $ TimeFormat.formatTime TimeFormat.defaultTimeLocale format t
+    S8.pack $ TimeFormat.formatTime TimeFormat.defaultTimeLocale format t
+    where format = "%Y-%m-%dT%H:%M:%SZ"
 
 
 -- Response parsing
 
--- TODO: chat about this.
+-- TODO: refactor me.
 parseResponse :: (Aeson.FromJSON a) => HTTP.Response LS8.ByteString -> Either Error a
 parseResponse response =
     let statusCode = HTTP.getResponseStatusCode response
