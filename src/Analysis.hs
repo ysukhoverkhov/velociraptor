@@ -19,7 +19,6 @@ linesAdded extensions GH.Commit {GH.files = Just files} =
         shouldUseFile f = any (hasExtension $ GH.filename f) extensions
         hasExtension filename ext = T.isSuffixOf ext filename
 
-
 commitsDateRange :: [GH.Commit] -> Maybe (Clock.UTCTime, Clock.UTCTime)
 commitsDateRange =
     foldr updateRange Nothing
