@@ -1,11 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-
 module GitHub.Api (
     Repo (..), ErrorDescription (..), Commit (..), File(..), CommitPerson(..), CommitPayload(..),
     Auth (..), RepoSource (..), Error (..), CommitsCriteria (..), CommitCriteria (..),
-    fetchRepos, fetchCommits, fetchCommit) where
+    fetchRepos, fetchCommits, fetchCommit
+    ) where
 
 import           GHC.Generics (Generic)
 import           Control.Arrow (left)
@@ -21,6 +18,7 @@ import qualified Network.HTTP.Simple        as HTTP
 import qualified Data.Aeson                 as Aeson
 import qualified Data.Time.Clock            as Clock
 import qualified Data.Time.Format           as TimeFormat
+import qualified Data.Maybe                 as Maybe
 
 
 -- GitHub domain types
@@ -130,10 +128,11 @@ commitsRequest criteria =
     HTTP.setRequestPath requestPath . HTTP.setRequestQueryString requestQueryString
     where
         requestPath = E.encodeUtf8 ("/repos/" <> repoFullName (criteria :: CommitsCriteria) <> "/commits")
-        requestQueryString = [
+        requestQueryString = withoutEmpty [
                 ("since", formatTime <$> since criteria),
                 ("until", formatTime <$> GitHub.Api.until criteria)
             ]
+        withoutEmpty = filter $ Maybe.isJust . snd
 
 commitRequest :: CommitCriteria -> HTTP.Request -> HTTP.Request
 commitRequest criteria =

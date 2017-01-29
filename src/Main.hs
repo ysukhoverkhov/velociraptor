@@ -1,13 +1,10 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-
 import GitHub.Api
+import Analysis
 
 import Data.Time
-import Data.Time.Clock as Clock
+import qualified Data.Time.Clock as Clock
 import Data.Time.Format
 import qualified Data.Text                  as T
-import Data.List
 
 -- https://wiki.haskell.org/High-level_option_handling_with_GetOpt
 
@@ -19,27 +16,32 @@ main = do
     let auth = Auth { token = token }
 
     myRepos <- fetchRepos auth Own
+    print "Repos..."
     print myRepos
 
     case myRepos of
         Right xs -> printRepoCommits auth $ head xs
         Left error -> print error
 
+    print "Done!"
+
 
 printRepoCommits :: Auth -> Repo -> IO ()
 printRepoCommits auth repo = do
-    let s = parseTimeM False defaultTimeLocale "%-d-%-m-%Y" "16-1-2017"
-    let u = parseTimeM False defaultTimeLocale "%-d-%-m-%Y" "16-1-2019"
+--     let s = parseTimeM False defaultTimeLocale "%-d-%-m-%Y" "16-1-2017"
+--     let u = parseTimeM False defaultTimeLocale "%-d-%-m-%Y" "16-1-2019"
+--
+--     case s of
+--         Just t -> print $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" t
+--         _ -> print "not parsed"
 
-    case s of
-        Just t -> print $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" t
-        _ -> print "not parsed"
-
-    ecs <- fetchCommits auth CommitsCriteria { repoFullName = full_name repo, since = s, GitHub.Api.until = u }
+    print "Fetching commits..."
+    ecs <- fetchCommits auth CommitsCriteria { repoFullName = full_name repo, since = Nothing, GitHub.Api.until = Nothing }
     case ecs of
         Right cs -> do
-            mapM_ print cs
-            print $ firstCommitDate cs
+--             mapM_ print cs
+            print "Commits Range..."
+            print $ commitsDateRange cs
             printCommitDetails auth repo $ head cs
         Left error -> print error
 
@@ -51,29 +53,7 @@ printCommitDetails auth repo commit = do
     case ec of
         Right c -> do
             print c
-            print $ linesAdded (SourceExtensions [".coffee"]) c
+            print $ linesAdded ([".coffee"]) c
 
         Left error -> print error
 
-
--- TODO: move me to a module.
-
-data SourceExtensions = SourceExtensions [T.Text]
-
-linesAdded :: SourceExtensions -> Commit -> Int
-linesAdded _ Commit {files = Nothing} = 0
-linesAdded (SourceExtensions extensions) Commit {files = Just files} =
-    sum . map linesAddedToFile . filter shouldUseFile $ files
-    where
-        linesAddedToFile f = additions f - deletions f
-        shouldUseFile f = any (hasExtension $ filename f) extensions
-        hasExtension filename ext = T.isSuffixOf ext filename
-
--- TODO: rewrite with fold
-firstCommitDate :: [Commit] -> Clock.UTCTime
-firstCommitDate commits =
-    date au
-    where
-        payl = commit c :: CommitPayload
-        au = author payl :: Int
-        c = head $ sortOn (\a -> 1) commits
