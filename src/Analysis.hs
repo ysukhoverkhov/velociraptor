@@ -3,10 +3,12 @@
 module Analysis (
     SourceExtension,
     commitsDateRange,
-    linesAddedToCommits
+    linesAddedToCommits,
+    authorsInCommits
     ) where
 
 import qualified Data.Text       as T
+import qualified Data.List       as L
 import qualified Data.Time.Clock as Clock
 import qualified GitHub.Api      as GH
 
@@ -15,12 +17,12 @@ import qualified GitHub.Api      as GH
 type SourceExtension = T.Text
 
 authorsInCommits :: [SourceExtension] -> [GH.Commit] -> Int
-authorsInCommits extensions commits =
-    length (filter shouldUseCommit commits)
+authorsInCommits extensions =
+    length . L.group . L.sort . fmap author . filter shouldUseCommit
     where
         shouldUseCommit commit = True
+        author = GH.author :: GH.Commit -> GH.Person
         
-
 linesAddedToCommits :: [SourceExtension] -> [GH.Commit] -> Int
 linesAddedToCommits extensions
     = foldr (\ c r -> r + linesAddedToCommit extensions c) 0

@@ -90,10 +90,17 @@ printRepoVelocity auth repo = do
 
 --  TODO: refactor me and use transformers
 
-linesAddedInRange :: Auth -> Repo -> (Clock.UTCTime, Clock.UTCTime) -> IO (Either Error Int)
+data RangeInfo = RangeInfo {
+    lines :: Int,
+    contributors :: Int
+} deriving (Show)
+
+-- TODO: parametrize with file lists
+
+linesAddedInRange :: Auth -> Repo -> (Clock.UTCTime, Clock.UTCTime) -> IO (Either Error RangeInfo)
 linesAddedInRange auth repo range = do
     eitherCommits <- commitsForRange
-    either (return . Left) linesInCommits eitherCommits
+    either (return . Left) rangeInfoForCommits eitherCommits
 
     where
         commitsForRange :: IO (Either Error [Commit])
@@ -103,10 +110,19 @@ linesAddedInRange auth repo range = do
             GitHub.Api.until = Just $ snd range
         }
 
-        linesInCommits :: [Commit] -> IO (Either Error Int)
-        linesInCommits commits = do
+        -- TODO: split this into "fetching detailed commits" and "analyzing commits"
+        rangeInfoForCommits :: [Commit] -> IO (Either Error RangeInfo)
+        rangeInfoForCommits commits = do
             eitherDetailedCommits <- commitsDetails commits
-            return $ linesAddedToCommits [".coffee", ".json"] <$> eitherDetailedCommits
+            return $ composeRangeInfo <$> eitherDetailedCommits
+
+        composeRangeInfo :: [Commit] -> RangeInfo
+        composeRangeInfo commits =
+            RangeInfo {
+                lines = linesAddedToCommits [".coffee", ".json"] commits,
+                contributors = authorsInCommits [".coffee", ".json"] commits
+            }
+
 
         commitsDetails :: [Commit] -> IO (Either Error [Commit])
         commitsDetails commits = sequence <$> sequence (map fc commits)

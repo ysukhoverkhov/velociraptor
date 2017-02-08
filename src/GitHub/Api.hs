@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings, DeriveGeneric, DuplicateRecordFields #-}
 
 module GitHub.Api (
-    Repo (..), ErrorDescription (..), Commit (..), File(..), CommitPerson(..), CommitPayload(..),
+    Repo (..), ErrorDescription (..), Commit (..), File(..), Person(..), CommitPerson(..), CommitPayload(..),
     Auth (..), RepoSource (..), Error (..), CommitsCriteria (..), CommitDetailsCriteria (..),
     fetchRepos, fetchCommits, fetchCommitDetails
     ) where
@@ -38,7 +38,7 @@ data Repo = Repo {
 
 newtype Person = Person {
     login :: T.Text
-} deriving (Generic, Show)
+} deriving (Generic, Show, Ord, Eq)
 
 data Commit = Commit {
     sha :: T.Text,
