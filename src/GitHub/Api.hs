@@ -1,7 +1,9 @@
+{-# LANGUAGE OverloadedStrings, DeriveGeneric, DuplicateRecordFields #-}
+
 module GitHub.Api (
     Repo (..), ErrorDescription (..), Commit (..), File(..), CommitPerson(..), CommitPayload(..),
-    Auth (..), RepoSource (..), Error (..), CommitsCriteria (..), CommitCriteria (..),
-    fetchRepos, fetchCommits, fetchCommit
+    Auth (..), RepoSource (..), Error (..), CommitsCriteria (..), CommitDetailsCriteria (..),
+    fetchRepos, fetchCommits, fetchCommitDetails
     ) where
 
 import           GHC.Generics (Generic)
@@ -23,7 +25,7 @@ import qualified Data.Maybe                 as Maybe
 
 -- GitHub domain types
 
-data ErrorDescription = ErrorDescription {
+newtype ErrorDescription = ErrorDescription {
     message :: T.Text
 } deriving (Generic, Show)
 
@@ -34,7 +36,7 @@ data Repo = Repo {
     full_name :: T.Text
 } deriving (Generic, Show)
 
-data Person = Person {
+newtype Person = Person {
     login :: T.Text
 } deriving (Generic, Show)
 
@@ -66,7 +68,7 @@ data File = File {
 
 -- API types
 
-data Auth = Auth {
+newtype Auth = Auth {
     token :: T.Text
 } deriving (Show)
 
@@ -83,7 +85,7 @@ data CommitsCriteria = CommitsCriteria {
     until :: Maybe Clock.UTCTime
 } deriving (Show)
 
-data CommitCriteria = CommitCriteria {
+data CommitDetailsCriteria = CommitDetailsCriteria {
     repoFullName :: T.Text,
     commitSha :: T.Text
 } deriving (Show)
@@ -99,9 +101,9 @@ fetchCommits :: Auth -> CommitsCriteria -> IO (Either Error [Commit])
 fetchCommits auth criteria =
     fetchResource auth $ commitsRequest criteria
 
-fetchCommit :: Auth -> CommitCriteria -> IO (Either Error Commit)
-fetchCommit auth criteria =
-    fetchResource auth $ commitRequest criteria
+fetchCommitDetails :: Auth -> CommitDetailsCriteria -> IO (Either Error Commit)
+fetchCommitDetails auth criteria =
+    fetchResource auth $ commitDetailsRequest criteria
 
 
 
@@ -110,7 +112,7 @@ fetchResource auth request =
     performRequest $ request $ authenticatedRequest auth githubRequest
 
 performRequest :: (Aeson.FromJSON a) => HTTP.Request -> IO (Either Error a)
-performRequest request = HTTP.httpLBS request >>= return . parseResponse
+performRequest request = fmap parseResponse (HTTP.httpLBS request)
 
 
 -- Payloads fetching
@@ -134,13 +136,13 @@ commitsRequest criteria =
             ]
         withoutEmpty = filter $ Maybe.isJust . snd
 
-commitRequest :: CommitCriteria -> HTTP.Request -> HTTP.Request
-commitRequest criteria =
+commitDetailsRequest :: CommitDetailsCriteria -> HTTP.Request -> HTTP.Request
+commitDetailsRequest criteria =
     HTTP.setRequestPath . E.encodeUtf8 $
         "/repos/" <>
-        repoFullName (criteria :: CommitCriteria) <>
+        repoFullName (criteria :: CommitDetailsCriteria) <>
         "/commits/" <>
-        commitSha (criteria :: CommitCriteria)
+        commitSha (criteria :: CommitDetailsCriteria)
 
 
 authenticatedRequest :: Auth -> HTTP.Request -> HTTP.Request

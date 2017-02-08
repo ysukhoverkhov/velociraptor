@@ -1,18 +1,33 @@
+{-# LANGUAGE OverloadedStrings, DeriveGeneric, DuplicateRecordFields #-}
+
 module Analysis (
     SourceExtension,
     commitsDateRange,
-    linesAdded
+    linesAddedToCommits
     ) where
 
 import qualified Data.Text       as T
 import qualified Data.Time.Clock as Clock
 import qualified GitHub.Api      as GH
 
+{-# ANN module ("HLint: ignore Use ***"::String) #-}
 
 type SourceExtension = T.Text
-linesAdded :: [SourceExtension] -> GH.Commit -> Int
-linesAdded _ GH.Commit {GH.files = Nothing} = 0
-linesAdded extensions GH.Commit {GH.files = Just files} =
+
+authorsInCommits :: [SourceExtension] -> [GH.Commit] -> Int
+authorsInCommits extensions commits =
+    length (filter shouldUseCommit commits)
+    where
+        shouldUseCommit commit = True
+        
+
+linesAddedToCommits :: [SourceExtension] -> [GH.Commit] -> Int
+linesAddedToCommits extensions
+    = foldr (\ c r -> r + linesAddedToCommit extensions c) 0
+
+linesAddedToCommit :: [SourceExtension] -> GH.Commit -> Int
+linesAddedToCommit _ GH.Commit {GH.files = Nothing} = 0
+linesAddedToCommit extensions GH.Commit {GH.files = Just files} =
     sum . map linesAddedToFile . filter shouldUseFile $ files
     where
         linesAddedToFile f = GH.additions f - GH.deletions f

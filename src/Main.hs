@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings, DeriveGeneric, DuplicateRecordFields #-}
+
 import GitHub.Api
 import Analysis
 
@@ -5,6 +7,8 @@ import Data.Time
 import Data.Time.Clock                      as Clock
 import Data.Time.Format
 import qualified Data.Text                  as T
+import Control.Monad
+import Control.Monad.IO.Class
 
 -- https://wiki.haskell.org/High-level_option_handling_with_GetOpt
 
@@ -44,11 +48,11 @@ printRepoCommits auth repo = do
 printCommitDetails :: Auth -> Repo -> Commit -> IO ()
 printCommitDetails auth repo commit = do
     print "Fetching single commit..."
-    ec <- fetchCommit auth CommitCriteria { repoFullName = full_name repo, commitSha = sha commit}
+    ec <- fetchCommitDetails auth CommitDetailsCriteria { repoFullName = full_name repo, commitSha = sha commit}
     case ec of
         Right c -> do
             print c
-            print $ linesAdded ([".coffee"]) c
+            print $ linesAddedToCommits [".coffee", ".json"] [c]
 
         Left error -> print error
 
@@ -63,18 +67,56 @@ printRepoVelocity auth repo = do
             let dateRange = commitsDateRange cs
             let interval = 7 * 24 * 3600
 
-            let ranges = (\r -> dateRanges interval r) <$> dateRange
-            print ranges
+            let maybeRanges = dateRanges interval <$> dateRange
+            print maybeRanges
 
-            let commitsInRange = (\r -> head r) <$> ranges
-            print commitsInRange
+            case maybeRanges of
+                Nothing -> print "No date range"
+                Just ranges -> printLines ranges
 
         Left e -> print e
 
+    where
+        printLines [] = print "Done"
+        printLines (x:xs) = do
+            lines <- linesAddedInRange auth repo x
+            let textToPrint = (\l -> show l ++ " - " ++ rangeText x) <$> lines
+            print textToPrint
+            printLines xs
 
--- TODO: move me to the library
+        rangeText range = show (fst range) ++ " " ++ show (snd range)
 
 
+
+--  TODO: refactor me and use transformers
+
+linesAddedInRange :: Auth -> Repo -> (Clock.UTCTime, Clock.UTCTime) -> IO (Either Error Int)
+linesAddedInRange auth repo range = do
+    eitherCommits <- commitsForRange
+    either (return . Left) linesInCommits eitherCommits
+
+    where
+        commitsForRange :: IO (Either Error [Commit])
+        commitsForRange = fetchCommits auth CommitsCriteria {
+            repoFullName = full_name repo,
+            since = Just $ fst range,
+            GitHub.Api.until = Just $ snd range
+        }
+
+        linesInCommits :: [Commit] -> IO (Either Error Int)
+        linesInCommits commits = do
+            eitherDetailedCommits <- commitsDetails commits
+            return $ linesAddedToCommits [".coffee", ".json"] <$> eitherDetailedCommits
+
+        commitsDetails :: [Commit] -> IO (Either Error [Commit])
+        commitsDetails commits = sequence <$> sequence (map fc commits)
+
+        fc :: Commit -> IO (Either Error Commit)
+        fc c = fetchCommitDetails auth CommitDetailsCriteria {repoFullName = full_name repo, commitSha = sha c}
+
+
+
+--  TODO: move me somewhere.
 dateRanges :: NominalDiffTime -> (Clock.UTCTime, Clock.UTCTime) -> [(Clock.UTCTime, Clock.UTCTime)]
 dateRanges step totalRange =
     ranges totalRange []
