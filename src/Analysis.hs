@@ -3,7 +3,7 @@
 module Analysis (
     SourceExtension,
     RangeInfo(..),
-    linesAddedInRange,
+    calculateRangeInfo,
     commitsDateRange,
     linesAddedToCommits,
     authorsInCommits
@@ -19,14 +19,15 @@ import qualified Control.Monad.Trans.Either     as ET
 
 data RangeInfo = RangeInfo {
     lines :: Int,
-    contributors :: Int
+    contributors :: Int,
+    commits :: Int
 } deriving (Show)
 
 type SourceExtension = T.Text
 
 
-linesAddedInRange :: GH.Auth -> GH.Repo -> (Clock.UTCTime, Clock.UTCTime) -> [SourceExtension] -> IO (Either GH.Error RangeInfo)
-linesAddedInRange auth repo range extensions = do
+calculateRangeInfo :: GH.Auth -> GH.Repo -> (Clock.UTCTime, Clock.UTCTime) -> [SourceExtension] -> IO (Either GH.Error RangeInfo)
+calculateRangeInfo auth repo range extensions = do
     eitherCommits <- ET.runEitherT (ET.EitherT commitsForRange >>= (ET.EitherT . commitsDetails))
     return (composeRangeInfo <$> eitherCommits)
 
@@ -48,17 +49,21 @@ linesAddedInRange auth repo range extensions = do
         composeRangeInfo commits =
             RangeInfo {
                 lines = linesAddedToCommits extensions commits,
-                contributors = authorsInCommits extensions commits
+                contributors = authorsInCommits extensions commits,
+                commits = length commits
             }
 
 
 authorsInCommits :: [SourceExtension] -> [GH.Commit] -> Int
 authorsInCommits extensions =
-    length . L.group . L.sort . fmap author . filter shouldUseCommit
+    length . L.group . L.sort . fmap authorEmail . filter shouldUseCommit
     where
-        shouldUseCommit commit = True
-        author = GH.author :: GH.Commit -> GH.Person
-        
+        shouldUseCommit GH.Commit {GH.files = Just files} = any (fileHasExtension extensions) files
+        shouldUseCommit GH.Commit {GH.files = Nothing} = False
+
+        authorEmail c = GH.email (author (GH.commit c))
+        author = GH.author :: GH.CommitPayload -> GH.CommitPerson
+
 linesAddedToCommits :: [SourceExtension] -> [GH.Commit] -> Int
 linesAddedToCommits extensions
     = foldr (\ c r -> r + linesAddedToCommit extensions c) 0
@@ -66,10 +71,15 @@ linesAddedToCommits extensions
 linesAddedToCommit :: [SourceExtension] -> GH.Commit -> Int
 linesAddedToCommit _ GH.Commit {GH.files = Nothing} = 0
 linesAddedToCommit extensions GH.Commit {GH.files = Just files} =
-    sum . map linesAddedToFile . filter shouldUseFile $ files
+    sum . map linesAddedToFile . filter (fileHasExtension extensions) $ files
     where
         linesAddedToFile f = GH.additions f - GH.deletions f
-        shouldUseFile f = any (hasExtension $ GH.filename f) extensions
+
+-- Utility to find out is the file has one of specified extensions.
+fileHasExtension :: [SourceExtension] -> GH.File -> Bool
+fileHasExtension extensions file =
+    any (hasExtension $ GH.filename file) extensions
+    where
         hasExtension filename ext = T.isSuffixOf ext filename
 
 commitsDateRange :: [GH.Commit] -> Maybe (Clock.UTCTime, Clock.UTCTime)

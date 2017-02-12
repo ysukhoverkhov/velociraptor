@@ -38,13 +38,13 @@ data Repo = Repo {
 
 newtype Person = Person {
     login :: T.Text
-} deriving (Generic, Show, Ord, Eq)
+} deriving (Generic, Show)
 
 data Commit = Commit {
     sha :: T.Text,
     commit :: CommitPayload,
-    author :: Person,
-    committer :: Person,
+    author :: Maybe Person,
+    committer :: Maybe Person,
     files :: Maybe [File]
 } deriving (Generic, Show)
 

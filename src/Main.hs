@@ -41,48 +41,27 @@ main = do
 printRepoVelocity :: Auth -> Repo -> IO ()
 printRepoVelocity auth repo = do
     print "Repo Velocity..."
-    commits <- fetchCommits auth CommitsCriteria { repoFullName = full_name repo, since = Nothing, GitHub.Api.until = Nothing }
 
-    print commits
+    currentTime <- getCurrentTime
+    let ranges = take 5 (dateRanges (7 * 24 * 60 * 60) currentTime)
 
-    either print doPrint commits
+    printLines ranges
 
     where
-        doPrint cs = do
-              let dateRange = commitsDateRange cs
-              let interval = 7 * 24 * 3600
-
-              let maybeRanges = dateRanges interval <$> dateRange
-              print maybeRanges
-
-              case maybeRanges of
-                  Nothing -> print "No date range"
-                  Just ranges -> printLines ranges
 
         printLines [] = print "Done"
         printLines (x:xs) = do
-            lines <- linesAddedInRange auth repo x [".coffee"]
+            lines <- calculateRangeInfo auth repo x [".coffee"]
             let textToPrint = (\l -> show l ++ " - " ++ rangeText x) <$> lines
             print textToPrint
             printLines xs
 
-        rangeText range = show (fst range) ++ " " ++ show (snd range)
+        rangeText range = show (fst range) ++ " - " ++ show (snd range)
 
 
 --  TODO: move me somewhere.
-dateRanges :: NominalDiffTime -> (Clock.UTCTime, Clock.UTCTime) -> [(Clock.UTCTime, Clock.UTCTime)]
-dateRanges step totalRange =
-    ranges totalRange []
-    where
-        ranges :: (Clock.UTCTime, Clock.UTCTime) -> [(Clock.UTCTime, Clock.UTCTime)] -> [(Clock.UTCTime, Clock.UTCTime)]
-        ranges totalRange run
-            | fst totalRange >= snd totalRange = run
-            | otherwise =
-                let nextStartDate = addUTCTime step $ fst totalRange
-                in  ranges (nextStartDate, snd totalRange) ((fst totalRange, nextStartDate):run)
-
-dateRanges2 :: NominalDiffTime -> Clock.UTCTime -> [(Clock.UTCTime, Clock.UTCTime)]
-dateRanges2 step startTime =
+dateRanges :: NominalDiffTime -> Clock.UTCTime -> [(Clock.UTCTime, Clock.UTCTime)]
+dateRanges step startTime =
     map rangeNumber [0..]
     where
         rangeNumber :: Integer -> (Clock.UTCTime, Clock.UTCTime)
