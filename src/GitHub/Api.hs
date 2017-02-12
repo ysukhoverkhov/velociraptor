@@ -74,7 +74,8 @@ newtype Auth = Auth {
 
 data Error =
     InvalidPayload {payload :: T.Text, parserError :: T.Text} |
-    GitHubApiError {statusCode :: Int, errorDescription :: ErrorDescription}
+    GitHubApiError {statusCode :: Int, errorDescription :: ErrorDescription} |
+    OtherError {reason :: T.Text}
     deriving (Show)
 
 data RepoSource = Own | User T.Text | Organization T.Text deriving (Show)
