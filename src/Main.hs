@@ -1,12 +1,19 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedStrings, DeriveGeneric, DuplicateRecordFields #-}
 
 import GitHub.Api
+import Analysis
 
 import Data.Time
+import qualified Data.List                            as L
+import Data.Time.Clock                      as Clock
 import Data.Time.Format
+import qualified Data.Text                  as T
+import Control.Monad
+import Control.Monad.IO.Class
+
 
 -- https://wiki.haskell.org/High-level_option_handling_with_GetOpt
+
 -- NOTE: please do not review this file, mess here is by intention.
 
 main :: IO ()
@@ -15,38 +22,50 @@ main = do
     let auth = Auth { token = token }
 
     myRepos <- fetchRepos auth Own
+    print "Repos..."
     print myRepos
 
-    case myRepos of
-        Right xs -> printRepoCommits auth $ head xs
-        Left error -> print error
+    let cbtRepo = myRepos >>= findRepo "locomote/cbt"
+    print cbtRepo
+
+    either print (printRepoVelocity auth) cbtRepo
+
+    where
+        findRepo :: T.Text -> [Repo] -> Either Error Repo
+        findRepo repoName repos = maybe
+            (Left OtherError {reason = "Repo not found"} )
+            Right
+            (L.find (\r -> full_name r == repoName) repos)
 
 
-printRepoCommits :: Auth -> Repo -> IO ()
-printRepoCommits auth repo = do
-    let s = parseTimeM False defaultTimeLocale "%-d-%-m-%Y" "16-1-2017"
-    let u = parseTimeM False defaultTimeLocale "%-d-%-m-%Y" "16-1-2019"
+printRepoVelocity :: Auth -> Repo -> IO ()
+printRepoVelocity auth repo = do
+    print "Repo Velocity..."
 
-    case s of
-        Just t -> print $ formatTime defaultTimeLocale "%Y-%m-%dT%H:%M:%SZ" t
-        _ -> print "not parsed"
+    currentTime <- getCurrentTime
+    let ranges = take 5 (dateRanges (7 * 24 * 60 * 60) currentTime)
 
-    ecs <- fetchCommits auth CommitsCriteria { repoFullName = full_name repo, since = s, GitHub.Api.until = u }
-    case ecs of
-        Right cs -> do
-            mapM_ print cs
-            printCommitDetails auth repo $ head cs
-        Left error -> print error
+    printLines ranges
+
+    where
+
+        printLines [] = print "Done"
+        printLines (x:xs) = do
+            lines <- calculateRangeInfo auth repo x [".coffee"]
+            let textToPrint = (\l -> show l ++ " - " ++ rangeText x) <$> lines
+            print textToPrint
+            printLines xs
+
+        rangeText range = show (fst range) ++ " - " ++ show (snd range)
 
 
-printCommitDetails :: Auth -> Repo -> Commit -> IO ()
-printCommitDetails auth repo commit = do
-    print "Fetching single commit..."
-    ec <- fetchCommit auth CommitCriteria { repoFullName = full_name repo, commitSha = sha commit}
-    case ec of
-        Right c -> print c
-        Left error -> print error
+--  TODO: move me somewhere.
+dateRanges :: NominalDiffTime -> Clock.UTCTime -> [(Clock.UTCTime, Clock.UTCTime)]
+dateRanges step startTime =
+    map rangeNumber [0..]
+    where
+        rangeNumber :: Integer -> (Clock.UTCTime, Clock.UTCTime)
+        rangeNumber n = (date (n + 1), date n)
 
--- Subject to move to a module bellow.
-
--- linesAdded ::
+        date :: Integer -> Clock.UTCTime
+        date n = addUTCTime (step * fromInteger (negate n)) startTime
