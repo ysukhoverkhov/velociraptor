@@ -3,6 +3,7 @@
 module Analysis (
     SourceExtension,
     RangeInfo(..),
+    calculateRangeInfoInChunks,
     calculateRangeInfo,
     dateRanges
     ) where
@@ -25,9 +26,9 @@ data RangeInfo = RangeInfo {
 
 type SourceExtension = T.Text
 
-calculateRangeInfo :: GH.Auth -> [GH.Repo] -> [SourceExtension] -> (Clock.UTCTime, Clock.UTCTime) -> IO (Either GH.Error RangeInfo)
-calculateRangeInfo auth repos extensions range = do
-    eitherInfos <- sequence (fmap (calculateRangeInfo2 auth repos extensions) ranges)
+calculateRangeInfoInChunks :: GH.Auth -> [GH.Repo] -> [SourceExtension] -> (Clock.UTCTime, Clock.UTCTime) -> IO (Either GH.Error RangeInfo)
+calculateRangeInfoInChunks auth repos extensions range = do
+    eitherInfos <- sequence (fmap (calculateRangeInfo auth repos extensions) ranges)
     return (fmap combineRanges (sequence eitherInfos))
     where
         ranges = take rangesCount (dateRanges duration (snd range))
@@ -43,8 +44,8 @@ combineRanges ranges =
         commits = foldr (\r c -> c + Analysis.commits r) 0 ranges
     }
 
-calculateRangeInfo2 :: GH.Auth -> [GH.Repo] -> [SourceExtension] -> (Clock.UTCTime, Clock.UTCTime) -> IO (Either GH.Error RangeInfo)
-calculateRangeInfo2 auth repos extensions range = do
+calculateRangeInfo :: GH.Auth -> [GH.Repo] -> [SourceExtension] -> (Clock.UTCTime, Clock.UTCTime) -> IO (Either GH.Error RangeInfo)
+calculateRangeInfo auth repos extensions range = do
     eitherCommits <- allReposCommits repos
     return (composeRangeInfo <$> eitherCommits)
 

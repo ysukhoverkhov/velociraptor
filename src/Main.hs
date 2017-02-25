@@ -44,7 +44,7 @@ printRepoVelocity auth repos = do
         printLines [] = print "Done"
         printLines (x:xs) = do
             let extensions = [".coffee", ".js", ".rb"]
-            info <- calculateRangeInfo auth repos extensions x
+            info <- calculateRangeInfoInChunks auth repos extensions x
             let textToPrint = (\i -> infoText i ++ ", " ++ rangeText x) <$> info
             either print print textToPrint
             hFlush stdout
