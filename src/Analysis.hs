@@ -26,24 +26,18 @@ data RangeInfo = RangeInfo {
 type SourceExtension = T.Text
 
 
-calculateRangeInfo :: GH.Auth -> GH.Repo -> (Clock.UTCTime, Clock.UTCTime) -> [SourceExtension] -> IO (Either GH.Error RangeInfo)
-calculateRangeInfo auth repo range extensions = do
-    eitherCommits <- ET.runEitherT (ET.EitherT commitsForRange >>= (ET.EitherT . commitsDetails))
+calculateRangeInfo :: GH.Auth -> [GH.Repo] -> (Clock.UTCTime, Clock.UTCTime) -> [SourceExtension] -> IO (Either GH.Error RangeInfo)
+calculateRangeInfo auth repos range extensions = do
+    eitherCommits <- allReposCommits repos
     return (composeRangeInfo <$> eitherCommits)
 
     where
-        commitsForRange :: IO (Either GH.Error [GH.Commit])
-        commitsForRange = GH.fetchCommits auth GH.CommitsCriteria {
-            repoFullName = GH.full_name repo,
-            since = Just $ fst range,
-            GH.until = Just $ snd range
-        }
+        allReposCommits :: [GH.Repo] -> IO (Either GH.Error [GH.Commit])
+        allReposCommits repos =
+            fmap (fmap concat . sequence) (sequence (fmap repoCommits repos))
 
-        commitsDetails :: [GH.Commit] -> IO (Either GH.Error [GH.Commit])
-        commitsDetails commits = sequence <$> mapM fc commits
-
-        fc :: GH.Commit -> IO (Either GH.Error GH.Commit)
-        fc c = GH.fetchCommitDetails auth GH.CommitDetailsCriteria {repoFullName = GH.full_name repo, commitSha = GH.sha c}
+        repoCommits :: GH.Repo -> IO (Either GH.Error [GH.Commit])
+        repoCommits repo = ET.runEitherT (ET.EitherT (commitsForRange auth repo range) >>= (ET.EitherT . commitsDetails auth repo))
 
         composeRangeInfo :: [GH.Commit] -> RangeInfo
         composeRangeInfo commits =
@@ -52,6 +46,20 @@ calculateRangeInfo auth repo range extensions = do
                 contributors = authorsInCommits extensions commits,
                 commits = length commits
             }
+
+
+commitsForRange :: GH.Auth -> GH.Repo -> (Clock.UTCTime, Clock.UTCTime) -> IO (Either GH.Error [GH.Commit])
+commitsForRange auth repo range = GH.fetchCommits auth GH.CommitsCriteria {
+    repoFullName = GH.full_name repo,
+    since = Just $ fst range,
+    GH.until = Just $ snd range
+}
+
+commitsDetails :: GH.Auth -> GH.Repo -> [GH.Commit] -> IO (Either GH.Error [GH.Commit])
+commitsDetails auth repo commits = sequence <$> mapM fc commits
+    where
+        fc :: GH.Commit -> IO (Either GH.Error GH.Commit)
+        fc c = GH.fetchCommitDetails auth GH.CommitDetailsCriteria {repoFullName = GH.full_name repo, commitSha = GH.sha c}
 
 
 authorsInCommits :: [SourceExtension] -> [GH.Commit] -> Int

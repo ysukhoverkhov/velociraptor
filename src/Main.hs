@@ -10,7 +10,7 @@ import Data.Time.Format
 import qualified Data.Text                  as T
 import Control.Monad
 import Control.Monad.IO.Class
-
+import System.IO
 
 -- https://wiki.haskell.org/High-level_option_handling_with_GetOpt
 
@@ -43,7 +43,9 @@ printRepoVelocity auth repo = do
     print "Repo Velocity..."
 
     currentTime <- getCurrentTime
-    let ranges = take 5 (dateRanges (7 * 24 * 60 * 60) currentTime)
+
+    -- TODO: do it until results exist.
+    let ranges = take 1 (dateRanges (1 * 24 * 60 * 60) currentTime)
 
     printLines ranges
 
@@ -51,9 +53,10 @@ printRepoVelocity auth repo = do
 
         printLines [] = print "Done"
         printLines (x:xs) = do
-            lines <- calculateRangeInfo auth repo x [".coffee"]
+            lines <- calculateRangeInfo auth [repo] x [".coffee"]
             let textToPrint = (\l -> show l ++ " - " ++ rangeText x) <$> lines
             print textToPrint
+            hFlush stdout
             printLines xs
 
         rangeText range = show (fst range) ++ " - " ++ show (snd range)

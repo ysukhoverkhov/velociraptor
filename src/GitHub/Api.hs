@@ -133,7 +133,8 @@ commitsRequest criteria =
         requestPath = E.encodeUtf8 ("/repos/" <> repoFullName (criteria :: CommitsCriteria) <> "/commits")
         requestQueryString = withoutEmpty [
                 ("since", formatTime <$> since criteria),
-                ("until", formatTime <$> GitHub.Api.until criteria)
+                ("until", formatTime <$> GitHub.Api.until criteria),
+                ("per_page", Just "100")
             ]
         withoutEmpty = filter $ Maybe.isJust . snd
 
