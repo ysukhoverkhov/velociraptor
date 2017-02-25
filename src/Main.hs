@@ -25,44 +25,33 @@ main = do
     print "Repos..."
     print myRepos
 
-    either print (printRepoVelocity auth) myRepos
+    let zz = myRepos >>= findRepo "locomote/cbt"
+    either print (\rs -> printRepoVelocity auth [rs]) zz
 
 
 printRepoVelocity :: Auth -> [Repo] -> IO ()
 printRepoVelocity auth repos = do
+    let extensions = [".coffee", ".js", ".rb"]
     print "Repo Velocity..."
 
     currentTime <- getCurrentTime
 
     -- TODO: do it until results exist.
-    let ranges = take 3 (dateRanges (30 * 24 * 60 * 60) currentTime)
-
+    let ranges = take 24 (dateRanges (30 * 24 * 60 * 60) currentTime)
     printLines ranges
 
     where
-
         printLines [] = print "Done"
         printLines (x:xs) = do
             let extensions = [".coffee", ".js", ".rb"]
-            lines <- calculateRangeInfo auth repos extensions x
-            let textToPrint = (\l -> show l ++ " - " ++ rangeText x) <$> lines
-            print textToPrint
+            info <- calculateRangeInfo auth repos extensions x
+            let textToPrint = (\i -> infoText i ++ ", " ++ rangeText x) <$> info
+            either print print textToPrint
             hFlush stdout
             printLines xs
 
-        rangeText range = show (fst range) ++ " - " ++ show (snd range)
-
-
---  TODO: move me somewhere.
-dateRanges :: NominalDiffTime -> Clock.UTCTime -> [(Clock.UTCTime, Clock.UTCTime)]
-dateRanges step startTime =
-    map rangeNumber [0..]
-    where
-        rangeNumber :: Integer -> (Clock.UTCTime, Clock.UTCTime)
-        rangeNumber n = (date (n + 1), date n)
-
-        date :: Integer -> Clock.UTCTime
-        date n = addUTCTime (step * fromInteger (negate n)) startTime
+        rangeText range = show (fst range) ++ ", " ++ show (snd range)
+        infoText info = (show . Analysis.lines $ info) ++ ", " ++ (show . Analysis.commits $ info) ++ ", " ++ (show . length . Analysis.contributors $ info)
 
 
 findRepo :: T.Text -> [Repo] -> Either Error Repo
