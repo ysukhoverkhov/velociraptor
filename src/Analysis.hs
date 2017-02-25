@@ -26,8 +26,8 @@ data RangeInfo = RangeInfo {
 type SourceExtension = T.Text
 
 
-calculateRangeInfo :: GH.Auth -> [GH.Repo] -> (Clock.UTCTime, Clock.UTCTime) -> [SourceExtension] -> IO (Either GH.Error RangeInfo)
-calculateRangeInfo auth repos range extensions = do
+calculateRangeInfo :: GH.Auth -> [GH.Repo] -> [SourceExtension] -> (Clock.UTCTime, Clock.UTCTime) -> IO (Either GH.Error RangeInfo)
+calculateRangeInfo auth repos extensions range = do
     eitherCommits <- allReposCommits repos
     return (composeRangeInfo <$> eitherCommits)
 

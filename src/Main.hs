@@ -25,27 +25,17 @@ main = do
     print "Repos..."
     print myRepos
 
-    let cbtRepo = myRepos >>= findRepo "locomote/cbt"
-    print cbtRepo
-
-    either print (printRepoVelocity auth) cbtRepo
-
-    where
-        findRepo :: T.Text -> [Repo] -> Either Error Repo
-        findRepo repoName repos = maybe
-            (Left OtherError {reason = "Repo not found"} )
-            Right
-            (L.find (\r -> full_name r == repoName) repos)
+    either print (printRepoVelocity auth) myRepos
 
 
-printRepoVelocity :: Auth -> Repo -> IO ()
-printRepoVelocity auth repo = do
+printRepoVelocity :: Auth -> [Repo] -> IO ()
+printRepoVelocity auth repos = do
     print "Repo Velocity..."
 
     currentTime <- getCurrentTime
 
     -- TODO: do it until results exist.
-    let ranges = take 1 (dateRanges (1 * 24 * 60 * 60) currentTime)
+    let ranges = take 3 (dateRanges (30 * 24 * 60 * 60) currentTime)
 
     printLines ranges
 
@@ -53,7 +43,8 @@ printRepoVelocity auth repo = do
 
         printLines [] = print "Done"
         printLines (x:xs) = do
-            lines <- calculateRangeInfo auth [repo] x [".coffee"]
+            let extensions = [".coffee", ".js", ".rb"]
+            lines <- calculateRangeInfo auth repos extensions x
             let textToPrint = (\l -> show l ++ " - " ++ rangeText x) <$> lines
             print textToPrint
             hFlush stdout
@@ -72,3 +63,10 @@ dateRanges step startTime =
 
         date :: Integer -> Clock.UTCTime
         date n = addUTCTime (step * fromInteger (negate n)) startTime
+
+
+findRepo :: T.Text -> [Repo] -> Either Error Repo
+findRepo repoName repos = maybe
+    (Left OtherError {reason = "Repo not found"} )
+    Right
+    (L.find (\r -> full_name r == repoName) repos)
