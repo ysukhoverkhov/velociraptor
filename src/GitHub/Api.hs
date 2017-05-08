@@ -108,11 +108,11 @@ fetchCommitDetails auth criteria =
 
 
 
-fetchResource :: (Aeson.FromJSON a) => Auth -> (HTTP.Request -> HTTP.Request) -> IO (Either Error a)
+fetchResource :: (Aeson.FromJSON a, Show a) => Auth -> (HTTP.Request -> HTTP.Request) -> IO (Either Error a)
 fetchResource auth request =
     performRequest $ request $ authenticatedRequest auth githubRequest
 
-performRequest :: (Aeson.FromJSON a) => HTTP.Request -> IO (Either Error a)
+performRequest :: (Aeson.FromJSON a, Show a) => HTTP.Request -> IO (Either Error a)
 performRequest request = fmap parseResponse (HTTP.httpLBS request)
 
 
@@ -120,11 +120,15 @@ performRequest request = fmap parseResponse (HTTP.httpLBS request)
 
 reposRequest :: RepoSource -> HTTP.Request -> HTTP.Request
 reposRequest source =
-    HTTP.setRequestPath endpoint
-    where endpoint = E.encodeUtf8 $ case source of
+    HTTP.setRequestPath endpoint . HTTP.setRequestQueryString requestQueryString
+    where
+        endpoint = E.encodeUtf8 $ case source of
             Own               -> "/user/repos"
             User name         -> "/users/" <> name <> "/repos"
             Organization name -> "/orgs/" <> name <> "/repos"
+        requestQueryString = [
+                ("per_page", Just "100")
+            ]
 
 commitsRequest :: CommitsCriteria -> HTTP.Request -> HTTP.Request
 commitsRequest criteria =
@@ -133,7 +137,8 @@ commitsRequest criteria =
         requestPath = E.encodeUtf8 ("/repos/" <> repoFullName (criteria :: CommitsCriteria) <> "/commits")
         requestQueryString = withoutEmpty [
                 ("since", formatTime <$> since criteria),
-                ("until", formatTime <$> GitHub.Api.until criteria)
+                ("until", formatTime <$> GitHub.Api.until criteria),
+                ("per_page", Just "100")
             ]
         withoutEmpty = filter $ Maybe.isJust . snd
 
@@ -167,7 +172,7 @@ formatTime t =
 -- Response parsing
 
 -- TODO: refactor me.
-parseResponse :: (Aeson.FromJSON a) => HTTP.Response LS8.ByteString -> Either Error a
+parseResponse :: (Aeson.FromJSON a, Show a) => HTTP.Response LS8.ByteString -> Either Error a
 parseResponse response =
     let statusCode = HTTP.getResponseStatusCode response
         responseBody = HTTP.getResponseBody response
@@ -175,7 +180,6 @@ parseResponse response =
         parser code = (parsePayload :: LS8.ByteString -> Either Error ErrorDescription) >=>
                    (\err -> Left GitHubApiError {statusCode = code, errorDescription = err})
     in  parser statusCode responseBody
-
 
 parsePayload :: (Aeson.FromJSON a) => LS8.ByteString -> Either Error a
 parsePayload json =
